@@ -1,0 +1,142 @@
+const DAYS_PT = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+const MONTHS_PT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+const HOUR_SLOTS = ['09:00','09:30','10:00','10:30','11:00','11:30',
+                    '12:00','12:30','13:00','13:30','14:00','14:30',
+                    '15:00','15:30','16:00','16:30'];
+
+let currentWeekOffset = 0;
+let selectedDate = null;
+let selectedSlot = null;
+let bookedSlots = {};
+
+function getMonday(d) {
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + diff);
+}
+
+function fmt(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function renderWeek() {
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  const monday = getMonday(new Date());
+  monday.setDate(monday.getDate() + currentWeekOffset * 7);
+  const friday = new Date(monday);
+  friday.setDate(friday.getDate() + 4);
+
+  document.getElementById('weekLabel').textContent =
+    `${monday.getDate()} ${MONTHS_PT[monday.getMonth()]} – ${friday.getDate()} ${MONTHS_PT[friday.getMonth()]}`;
+
+  const grid = document.getElementById('daysGrid');
+  grid.innerHTML = '';
+
+  for (let i = 0; i < 5; i++) {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    const btn = document.createElement('button');
+    btn.className = 'day-btn';
+    const isPast = d < today;
+    if (isPast) btn.classList.add('past');
+    if (selectedDate && fmt(d) === fmt(selectedDate)) btn.classList.add('active');
+    btn.innerHTML = `<div class="day-name">${DAYS_PT[d.getDay()]}</div>
+                     <div class="day-num">${d.getDate()}</div>`;
+    if (!isPast) btn.addEventListener('click', () => selectDay(d));
+    grid.appendChild(btn);
+  }
+}
+
+function selectDay(d) {
+  selectedDate = d;
+  selectedSlot = null;
+  renderWeek();
+  renderSlots();
+  updateSummary();
+}
+
+function renderSlots() {
+  const title = document.getElementById('slotsTitle');
+  const grid = document.getElementById('slotsGrid');
+  grid.innerHTML = '';
+
+  if (!selectedDate) { title.textContent = 'Selecione um dia'; return; }
+
+  const key = fmt(selectedDate);
+  title.textContent = `Horários – ${selectedDate.getDate()} de ${MONTHS_PT[selectedDate.getMonth()]}`;
+
+  const booked = bookedSlots[key] || new Set();
+  const now = new Date();
+
+  HOUR_SLOTS.forEach(time => {
+    const [h, m] = time.split(':').map(Number);
+    const slotDate = new Date(selectedDate);
+    slotDate.setHours(h, m, 0, 0);
+    const btn = document.createElement('button');
+    btn.className = 'slot-btn';
+    btn.textContent = time;
+    if (booked.has(time) || slotDate <= now) {
+      btn.classList.add('booked');
+    } else {
+      if (selectedSlot === time) btn.classList.add('selected');
+      btn.addEventListener('click', () => selectSlot(time));
+    }
+    grid.appendChild(btn);
+  });
+}
+
+function selectSlot(time) {
+  selectedSlot = time;
+  renderSlots();
+  updateSummary();
+}
+
+function updateSummary() {
+  const name    = document.getElementById('clientName').value.trim();
+  const service = document.getElementById('serviceSelect').value;
+  const summary = document.getElementById('bookingSummary');
+  const btn     = document.getElementById('confirmBtn');
+
+  if (selectedDate && selectedSlot && name && service) {
+    summary.classList.remove('hidden');
+    summary.innerHTML =
+      `📅 <span>${selectedDate.getDate()} ${MONTHS_PT[selectedDate.getMonth()]}</span> às <span>${selectedSlot}</span><br/>
+       💆 <span>${service}</span><br/>
+       👤 <span>${name}</span>`;
+    btn.disabled = false;
+  } else {
+    summary.classList.add('hidden');
+    btn.disabled = true;
+  }
+}
+
+document.getElementById('confirmBtn').addEventListener('click', () => {
+  const key = fmt(selectedDate);
+  if (!bookedSlots[key]) bookedSlots[key] = new Set();
+  bookedSlots[key].add(selectedSlot);
+
+  const toast = document.getElementById('toast');
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 3500);
+
+  selectedSlot = null;
+  document.getElementById('clientName').value = '';
+  document.getElementById('clientPhone').value = '';
+  document.getElementById('serviceSelect').value = '';
+  renderSlots();
+  updateSummary();
+});
+
+document.getElementById('prevWeek').addEventListener('click', () => {
+  if (currentWeekOffset > 0) { currentWeekOffset--; renderWeek(); renderSlots(); }
+});
+document.getElementById('nextWeek').addEventListener('click', () => {
+  if (currentWeekOffset < 4) { currentWeekOffset++; renderWeek(); renderSlots(); }
+});
+
+['clientName','clientPhone','serviceSelect'].forEach(id => {
+  document.getElementById(id).addEventListener('input', updateSummary);
+});
+
+renderWeek();
